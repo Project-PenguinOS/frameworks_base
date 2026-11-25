@@ -447,6 +447,15 @@ public abstract class BrightnessMappingStrategy {
     private Pair<float[], float[]> insertControlPoint(
             float[] luxLevels, float[] brightnessLevels, float lux, float brightness) {
         final int idx = findInsertionPoint(luxLevels, lux);
+        final float defaultBrightness;
+        if (idx == luxLevels.length) {
+            defaultBrightness = brightnessLevels[idx - 1];
+        } else if (idx == 0 || luxLevels[idx] == lux) {
+            defaultBrightness = brightnessLevels[idx];
+        } else {
+            defaultBrightness = MathUtils.lerp(brightnessLevels[idx - 1], brightnessLevels[idx],
+                    MathUtils.norm(luxLevels[idx - 1], luxLevels[idx], lux));
+        }
         final float[] newLuxLevels;
         final float[] newBrightnessLevels;
         if (idx == luxLevels.length) {
@@ -467,7 +476,7 @@ public abstract class BrightnessMappingStrategy {
                     brightnessLevels.length - idx);
             newBrightnessLevels[idx] = brightness;
         }
-        smoothCurve(newLuxLevels, newBrightnessLevels, idx);
+        smoothCurve(newLuxLevels, newBrightnessLevels, idx, defaultBrightness);
         return Pair.create(newLuxLevels, newBrightnessLevels);
     }
 
@@ -486,19 +495,23 @@ public abstract class BrightnessMappingStrategy {
         return arr.length;
     }
 
-    private void smoothCurve(float[] lux, float[] brightness, int idx) {
+    // Each step may also move by the default curve's own step, so a user point offsets the
+    // curve instead of flattening it (a 0 brightness point would otherwise cap the whole curve).
+    private void smoothCurve(float[] lux, float[] brightness, int idx, float defaultBrightness) {
         if (mLoggingEnabled) {
             PLOG.logCurve("unsmoothed curve", lux, brightness);
         }
         float prevLux = lux[idx];
         float prevBrightness = brightness[idx];
+        float prevDefault = defaultBrightness;
         // Smooth curve for data points above the newly introduced point
         for (int i = idx+1; i < lux.length; i++) {
             float currLux = lux[i];
             float currBrightness = brightness[i];
             float maxBrightness = MathUtils.max(
                     prevBrightness * permissibleRatio(currLux, prevLux),
-                    prevBrightness + MIN_PERMISSABLE_INCREASE);
+                    prevBrightness + MathUtils.max(MIN_PERMISSABLE_INCREASE,
+                            currBrightness - prevDefault));
             float newBrightness = MathUtils.constrain(
                     currBrightness, prevBrightness, maxBrightness);
             if (newBrightness == currBrightness) {
@@ -506,15 +519,19 @@ public abstract class BrightnessMappingStrategy {
             }
             prevLux = currLux;
             prevBrightness = newBrightness;
+            prevDefault = currBrightness;
             brightness[i] = newBrightness;
         }
         // Smooth curve for data points below the newly introduced point
         prevLux = lux[idx];
         prevBrightness = brightness[idx];
+        prevDefault = defaultBrightness;
         for (int i = idx-1; i >= 0; i--) {
             float currLux = lux[i];
             float currBrightness = brightness[i];
-            float minBrightness = prevBrightness * permissibleRatio(currLux, prevLux);
+            float minBrightness = MathUtils.min(
+                    prevBrightness * permissibleRatio(currLux, prevLux),
+                    prevBrightness - (prevDefault - currBrightness));
             float newBrightness = MathUtils.constrain(
                     currBrightness, minBrightness, prevBrightness);
             if (newBrightness == currBrightness) {
@@ -522,6 +539,7 @@ public abstract class BrightnessMappingStrategy {
             }
             prevLux = currLux;
             prevBrightness = newBrightness;
+            prevDefault = currBrightness;
             brightness[i] = newBrightness;
         }
         if (mLoggingEnabled) {
@@ -536,6 +554,10 @@ public abstract class BrightnessMappingStrategy {
 
     protected float inferAutoBrightnessAdjustment(float maxGamma, float desiredBrightness,
             float currentBrightness) {
+        // No gamma range (max gamma 1): the user point alone shapes the curve.
+        if (maxGamma <= 1.0f) {
+            return 0;
+        }
         float adjustment = 0;
         float gamma = Float.NaN;
         // Extreme edge cases: use a simpler heuristic, as proper gamma correction around the edges
