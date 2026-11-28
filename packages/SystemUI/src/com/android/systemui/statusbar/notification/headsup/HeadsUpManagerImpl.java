@@ -57,6 +57,7 @@ import com.android.systemui.statusbar.notification.data.repository.HeadsUpRowRep
 import com.android.systemui.statusbar.notification.row.ExpandableNotificationRow;
 import com.android.systemui.statusbar.notification.shared.AvalancheReplaceHunWhenCritical;
 import com.android.systemui.statusbar.notification.shared.NotificationThrottleHun;
+import com.android.systemui.statusbar.phone.DozeParameters;
 import com.android.systemui.statusbar.phone.ExpandHeadsUpOnInlineReply;
 import com.android.systemui.statusbar.phone.KeyguardBypassController;
 import com.android.systemui.statusbar.policy.AccessibilityManagerWrapper;
@@ -1767,7 +1768,9 @@ public class HeadsUpManagerImpl
 
         private int getDecayDuration() {
             if (mDozing) {
-                return mPulseDurationTime;
+                // 0 is the ambient timeout's "never"; the pulse is held until dismissed.
+                return mPulseDurationTime > 0 ? mPulseDurationTime
+                        : DozeParameters.PULSE_NEVER_TIMES_OUT;
             } else {
                 return mAutoDismissTime;
             }

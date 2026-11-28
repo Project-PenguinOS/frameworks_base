@@ -92,6 +92,7 @@ public class DozeParameters implements
 
     private final AlwaysOnDisplayPolicy mAlwaysOnPolicy;
     private final Resources mResources;
+    private final android.content.ContentResolver mContentResolver;
     private final BatteryController mBatteryController;
     private final ScreenOffAnimationController mScreenOffAnimationController;
     private final DozeInteractor mDozeInteractor;
@@ -166,6 +167,7 @@ public class DozeParameters implements
             Optional<MinModeManager> minModeManager,
             ShakeAodController shakeAodController) {
         mResources = resources;
+        mContentResolver = context.getContentResolver();
         mAmbientDisplayConfiguration = ambientDisplayConfiguration;
         mAlwaysOnPolicy = alwaysOnDisplayPolicy;
         mBatteryController = batteryController;
@@ -247,9 +249,20 @@ public class DozeParameters implements
         return getInt("doze.pulse.duration.in", R.integer.doze_pulse_duration_in);
     }
 
+    /**
+     * How long a notification keeps the ambient display on: the user's ambient notification
+     * timeout when set, where 0 is "never", and the device default otherwise.
+     */
     public int getPulseVisibleDuration() {
+        int timeout = Settings.System.getIntForUser(mContentResolver,
+                Settings.System.AMBIENT_NOTIF_TIMEOUT, -1, mUserTracker.getUserId());
+        if (timeout == 0) return PULSE_NEVER_TIMES_OUT;
+        if (timeout > 0) return timeout;
         return getInt("doze.pulse.duration.visible", R.integer.doze_pulse_duration_visible);
     }
+
+    /** A pulse that stays until it is dismissed, short of overflowing the summed durations. */
+    public static final int PULSE_NEVER_TIMES_OUT = Integer.MAX_VALUE / 4;
 
     public int getPulseOutDuration() {
         return getInt("doze.pulse.duration.out", R.integer.doze_pulse_duration_out);
@@ -525,7 +538,7 @@ public class DozeParameters implements
     }
 
     public int getPulseVisibleDurationExtended() {
-        return 2 * getPulseVisibleDuration();
+        return (int) Math.min(2L * getPulseVisibleDuration(), PULSE_NEVER_TIMES_OUT);
     }
 
     public boolean doubleTapNeedsProximityCheck() {
