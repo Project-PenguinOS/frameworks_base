@@ -428,16 +428,21 @@ public class NotificationBackgroundView extends View implements Dumpable,
 
     private int surfaceFor(int tintColor) {
         if (tintColor != mNormalColor || !LiquidGlass.isEnabled(getContext())) return tintColor;
+        // The light theme keeps dark and accent notification text, which needs a light frost
+        // behind it: the Liquid Glass surface is a dark smoke, and the COS shade is dark glass
+        // in both themes. The COS heads-up keeps its own measured glass.
+        if (isLightTheme() && !(mHeadsUpGlass && isCosShade())) return COS_LIGHT_CARD_FROST;
         if (mHeadsUpGlass) return LiquidGlass.headsUpSurface();
-        // The COS shade is dark glass in both themes; its light theme keeps dark and accent
-        // notification text, which needs a light frost behind it to stay readable.
-        return isCosLightShade() ? COS_LIGHT_CARD_FROST : LiquidGlass.viewSurface();
+        return LiquidGlass.viewSurface();
     }
 
-    private boolean isCosLightShade() {
-        return CosFeatures.isOn(getContext(), CosFeature.Shade)
-                && (getResources().getConfiguration().uiMode
-                        & Configuration.UI_MODE_NIGHT_MASK) != Configuration.UI_MODE_NIGHT_YES;
+    private boolean isCosShade() {
+        return CosFeatures.isOn(getContext(), CosFeature.Shade);
+    }
+
+    private boolean isLightTheme() {
+        return (getResources().getConfiguration().uiMode
+                & Configuration.UI_MODE_NIGHT_MASK) != Configuration.UI_MODE_NIGHT_YES;
     }
 
     /**
